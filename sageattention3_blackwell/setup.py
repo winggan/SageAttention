@@ -41,6 +41,9 @@ def append_nvcc_threads(nvcc_extra_args):
     return nvcc_extra_args + ["--threads", "4"]
 
 
+version_suffix = None
+torch_required_version = None
+
 cmdclass = {}
 ext_modules = []
 
@@ -57,6 +60,23 @@ if not SKIP_CUDA_BUILD:
     _, bare_metal_version = get_cuda_bare_metal_version(CUDA_HOME)
     if bare_metal_version < Version("12.8"):
         raise RuntimeError("Sage3 is only supported on CUDA 12.8 and above")
+
+    # Align the wheel with the toolchain used for the build: pin torch in
+    # install_requires to the exact build-time version, and record both the
+    # torch and CUDA versions in the version's local segment (PEP 440), e.g.
+    # "1.0.0+torch2.8.0.cu128". torch.version.cuda is the CUDA runtime flavor
+    # of the pinned torch build; fall back to the local nvcc version when
+    # torch does not report one.
+    torch_build_version = Version(torch.__version__).public
+    cuda_build_version = (
+        torch.version.cuda
+        or f"{bare_metal_version.major}.{bare_metal_version.minor}"
+    )
+    version_suffix = (
+        f'+torch{torch_build_version}'
+        f'.cu{cuda_build_version.replace(".", "")}'
+    )
+    torch_required_version = f'=={torch.__version__}'
 
     # The kernels only support the SM120 family (consumer Blackwell, RTX 50).
     # Always build all supported archs; sm_121a requires nvcc >= 12.9
@@ -159,7 +179,7 @@ class CachedWheelsCommand(_bdist_wheel):
 
 setup(
     name=PACKAGE_NAME,
-    version="1.0.0",
+    version="1.0.0" + (version_suffix or ""),
     packages=find_packages(
         exclude=(
             "build",
@@ -185,7 +205,7 @@ setup(
     },
     python_requires=">=3.9",
     install_requires=[
-        "torch",
+        "torch" + (torch_required_version or ">=2.8.0"),
         "triton",
         "einops",
         "packaging",

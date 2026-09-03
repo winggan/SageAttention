@@ -29,6 +29,9 @@ SKIP_CUDA_BUILD = (
     or ("sdist" in sys.argv)
 )
 
+version_suffix = None
+torch_required_version = None
+
 ext_modules = []
 cmdclass = {}
 
@@ -119,6 +122,22 @@ if not SKIP_CUDA_BUILD:
             compute_capabilities.add(f"{major}.{minor}")
 
     nvcc_cuda_version = get_nvcc_cuda_version(CUDA_HOME)
+
+    # Align the wheel with the toolchain used for the build: pin torch in
+    # install_requires to the exact build-time version, and record both the
+    # torch and CUDA versions in the version's local segment (PEP 440), e.g.
+    # "2.2.0+torch2.5.1.cu124". torch.version.cuda is the CUDA runtime flavor
+    # of the pinned torch build; fall back to the local nvcc version when
+    # torch does not report one.
+    torch_build_version = Version(torch.__version__).public
+    cuda_build_version = (
+        torch.version.cuda or f"{nvcc_cuda_version.major}.{nvcc_cuda_version.minor}"
+    )
+    version_suffix = (
+        f'+torch{torch_build_version}'
+        f'.cu{cuda_build_version.replace(".", "")}'
+    )
+    torch_required_version = f'=={torch.__version__}'
 
     if not compute_capabilities:
         raise RuntimeError(
@@ -306,7 +325,7 @@ if not SKIP_CUDA_BUILD:
 
 setup(
     name='sageattention',
-    version='2.2.0',
+    version='2.2.0' + (version_suffix or ""),
     author='SageAttention team',
     license='Apache 2.0 License',
     description='Accurate and efficient plug-and-play low-bit attention.',
@@ -315,6 +334,7 @@ setup(
     url='https://github.com/thu-ml/SageAttention',
     packages=find_packages(),
     python_requires='>=3.9',
+    install_requires=["torch" + (torch_required_version or ">=2.3.0"), "triton"],
     ext_modules=ext_modules,
     cmdclass=cmdclass,
 )
