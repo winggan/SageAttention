@@ -1,0 +1,10 @@
+# CUTLASS is pinned at tag v4.3.4
+# (commit 1810164f27f2c7a499fcfc86681392662375327d).
+#
+# Note: git records the pinned commit in the submodule gitlink (the tree
+# entry of the path below), not in this file; this file only maps the path
+# to its URL. After cloning, check the submodule out with:
+#   git submodule update --init --recursive
+[submodule "sageattention3_blackwell/csrc/cutlass"]
+	path = sageattention3_blackwell/csrc/cutlass
+	url = https://github.com/NVIDIA/cutlass.git

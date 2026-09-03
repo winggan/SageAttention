@@ -139,7 +139,44 @@ if not SKIP_CUDA_BUILD:
         raise RuntimeError(
             "CUDA 12.8 or higher is required for compute capability 12.0.")
 
-    # Add target compute capabilities to NVCC flags.
+    # Per-arch gencode flags, selected per extension below.
+    class GencodeFlags:
+        """Collect -gencode flags per architecture.
+
+        `flags(w=...)` keeps only the listed archs, `flags(wo=...)` excludes
+        them; the two arguments are mutually exclusive. Arch numbers match
+        with or without the 'a' suffix (e.g. "90" matches "90a").
+        """
+
+        def __init__(self):
+            self._flags_by_arch = {}
+
+        def add(self, num, ptx=False):
+            arch = num.rstrip("a")
+            arch_flags = self._flags_by_arch.setdefault(arch, [])
+            arch_flags += ["-gencode", f"arch=compute_{num},code=sm_{num}"]
+            if ptx:
+                arch_flags += ["-gencode", f"arch=compute_{num},code=compute_{num}"]
+
+        def flags(self, w=None, wo=None):
+            if w is not None and wo is not None:
+                raise ValueError("'w' and 'wo' are mutually exclusive")
+            if w is not None:
+                wanted = {a.rstrip("a") for a in w}
+                archs = [a for a in self._flags_by_arch if a in wanted]
+            elif wo is not None:
+                skipped = {a.rstrip("a") for a in wo}
+                archs = [a for a in self._flags_by_arch if a not in skipped]
+            else:
+                archs = list(self._flags_by_arch)
+            selected = []
+            for arch in archs:
+                selected += self._flags_by_arch[arch]
+            return selected
+
+    GENCODES = GencodeFlags()
+
+    # Add target compute capabilities as per-arch gencode flags.
     for capability in compute_capabilities:
         if capability.startswith("8.0"):
             HAS_SM80 = True
@@ -164,9 +201,7 @@ if not SKIP_CUDA_BUILD:
             num = "121a"
         else:
             continue
-        NVCC_FLAGS += ["-gencode", f"arch=compute_{num},code=sm_{num}"]
-        if capability.endswith("+PTX"):
-            NVCC_FLAGS += ["-gencode", f"arch=compute_{num},code=compute_{num}"]
+        GENCODES.add(num, ptx=capability.endswith("+PTX"))
 
     # Fused kernels and QAttn variants
     from torch.utils.cpp_extension import CUDAExtension
@@ -179,7 +214,7 @@ if not SKIP_CUDA_BUILD:
                     "csrc/qattn/pybind_sm80.cpp",
                     "csrc/qattn/qk_int_sv_f16_cuda_sm80.cu",
                 ],
-                extra_compile_args={"cxx": CXX_FLAGS, "nvcc": NVCC_FLAGS},
+                extra_compile_args={"cxx": CXX_FLAGS, "nvcc": NVCC_FLAGS + GENCODES.flags()},
             )
         )
 
@@ -197,7 +232,7 @@ if not SKIP_CUDA_BUILD:
                     "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_fuse_v_scale_attn_inst_buf.cu",
                     "csrc/qattn/sm89_qk_int8_sv_f8_accum_f16_fuse_v_scale_attn_inst_buf.cu",
                 ],
-                extra_compile_args={"cxx": CXX_FLAGS, "nvcc": NVCC_FLAGS},
+                extra_compile_args={"cxx": CXX_FLAGS, "nvcc": NVCC_FLAGS + GENCODES.flags(wo=["80", "86"])},
             )
         )
 
@@ -209,8 +244,8 @@ if not SKIP_CUDA_BUILD:
                     "csrc/qattn/pybind_sm90.cpp",
                     "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu",
                 ],
-                extra_compile_args={"cxx": CXX_FLAGS, "nvcc": NVCC_FLAGS},
-                extra_link_args=['-lcuda'],
+                extra_compile_args={"cxx": CXX_FLAGS, "nvcc": NVCC_FLAGS + GENCODES.flags(w=["90"])},
+                # extra_link_args=['-lcuda'], need not to explicit link against cuda
             )
         )
 
@@ -218,7 +253,7 @@ if not SKIP_CUDA_BUILD:
         CUDAExtension(
             name="sageattention._fused",
             sources=["csrc/fused/pybind.cpp", "csrc/fused/fused.cu"],
-            extra_compile_args={"cxx": CXX_FLAGS, "nvcc": NVCC_FLAGS},
+            extra_compile_args={"cxx": CXX_FLAGS, "nvcc": NVCC_FLAGS + GENCODES.flags()},
         )
     )
 

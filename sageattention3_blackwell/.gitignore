@@ -1,0 +1,13 @@
+/test
+/build
+/*.egg-info
+*.mp4
+/dist
+/test
+__pycache__
+*.so
+evaluate/
+*.pkl
+*.vscode/
+*test.py
+*unmask.py

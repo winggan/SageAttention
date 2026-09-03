@@ -19,8 +19,27 @@ import triton.language as tl
 import torch.nn.functional as F
 from typing import Tuple
 from torch.nn.functional import scaled_dot_product_attention as sdpa
-import fp4attn_cuda
-import fp4quant_cuda
+
+try:
+    from . import fp4attn_cuda
+    from . import fp4quant_cuda
+except Exception:
+    fp4attn_cuda = None
+    fp4quant_cuda = None
+
+
+def _is_available() -> bool:
+    if fp4attn_cuda is None or fp4quant_cuda is None:
+        return False
+    try:
+        if not fp4attn_cuda.is_available():
+            return False
+        return torch.cuda.is_available() and torch.cuda.get_device_capability() in ((12, 0), (12, 1))
+    except Exception:
+        return False
+
+
+SAGEATTN3_BLACKWELL_ENABLED = _is_available()
 
 
 @triton.jit
@@ -129,6 +148,8 @@ def blockscaled_fp4_attn(qlist: Tuple,
 
 
 def sageattn3_blackwell(q, k, v, attn_mask = None, is_causal = False, per_block_mean = True, **kwargs):
+    if not SAGEATTN3_BLACKWELL_ENABLED:
+        return sdpa(q, k, v, is_causal = is_causal)
     if q.size(-1) >= 256:
         print(f"Unsupported Headdim {q.size(-1)}")
         return sdpa(q, k, v, is_causal = is_causal)

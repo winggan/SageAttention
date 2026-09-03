@@ -23,14 +23,16 @@ This hybrid approach may achieve **lossless acceleration**.
 
 ## Installation
 ### Base environment
-+ `python>=3.13`   , `torch>=2.8.0`, `CUDA >=12.8`
++ `python>=3.9`   , `torch>=2.8.0`, `CUDA >=12.8`
 
 ### Install Package
 
 To use SageAttention3, please **compile from source**:
 ```
 git clone https://github.com/thu-ml/SageAttention
-cd SageAttention/sageattention3_blackwell 
+cd SageAttention
+git submodule update --init --recursive
+cd sageattention3_blackwell 
 python setup.py install
 ```
 

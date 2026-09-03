@@ -30,6 +30,10 @@
 #define CHECK_SHAPE(x, ...) TORCH_CHECK(x.sizes() == torch::IntArrayRef({__VA_ARGS__}), #x " must have shape (" #__VA_ARGS__ ")")
 #define CHECK_CONTIGUOUS(x) TORCH_CHECK(x.is_contiguous(), #x " must be contiguous")
 
+// Defined in cuda_driver_shim.cpp: whether the CUDA driver entry points
+// required by the TMA kernels could be resolved at runtime.
+bool is_available();
+
 
 void set_params_fprop(Flash_fwd_params &params,
                       // sizes
@@ -216,6 +220,11 @@ mha_fwd(at::Tensor &q,         // batch_size x seqlen_q x num_heads x (head_size
         bool is_bf16
     ) {
 
+    TORCH_CHECK(is_available(),
+        "sageattn3 fp4 kernels are unavailable: cuTensorMapEncodeTiled could "
+        "not be resolved from the CUDA driver. Please update your NVIDIA "
+        "driver.");
+
     auto dprops = at::cuda::getCurrentDeviceProperties();
     bool is_sm120 = dprops->major == 12 && dprops->minor == 0;
     bool is_sm121 = dprops->major == 12 && dprops->minor == 1;
@@ -338,4 +347,5 @@ mha_fwd(at::Tensor &q,         // batch_size x seqlen_q x num_heads x (head_size
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.doc() = "FlashAttention";
     m.def("fwd", &mha_fwd, "Forward pass");
+    m.def("is_available", &is_available);
 }
